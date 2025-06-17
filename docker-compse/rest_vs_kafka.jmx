@@ -129,7 +129,7 @@
             <collectionProp name="Arguments.arguments">
               <elementProp name="" elementType="HTTPArgument">
                 <boolProp name="HTTPArgument.always_encode">false</boolProp>
-                <stringProp name="Argument.value">{&quot;title&quot;:&quot;load-test&quot;,&quot;content&quot;:&quot;Kafka path&quot;,&quot;priority&quot;:&quot;HIGH&quot;}</stringProp>
+                <stringProp name="Argument.value">{&quot;title&quot;:&quot;load-test&quot;,&quot;content&quot;:&quot;Kafka path&quot;,&quot;priority&quot;:&quot;URGENT&quot;}</stringProp>
                 <stringProp name="Argument.metadata">=</stringProp>
               </elementProp>
             </collectionProp>

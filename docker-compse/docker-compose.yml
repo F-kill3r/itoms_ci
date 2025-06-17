@@ -1,24 +1,41 @@
 version: "4"
 services:
-#mysql은 추후 수정. 각 서비스의 application.yaml과 연계되어야함.
-#현재는 모든 서비스가 3306포트를 이용하여 하나의 db를 사용하고 있음.
-#이를 각각의 서비스용 mysql port로 매핑해야함
-#ex) 
-# application.yaml {mysql_port} -> {incident_mysql_port}
-# 이파일에서 inc -> 3306:3306 user -> 3307:3306 이런식으로.
+  # ───────── Infrastructure ─────────
+  zookeeper:
+    image: bitnami/zookeeper:3.9
+    container_name: zookeeper
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: bitnami/kafka:3.6
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_CFG_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    ports:
+      - "9092:9092"
+
   mysql:
     image: mysql:8.3.0
-    container_name: mysql_user
-    env_file:
-      - /home/ITOMS/.env
+    container_name: mysql
+    env_file: /home/ITOMS/.env
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
     ports:
-      - "3307:3306"
+      - "3306:3306"
     volumes:
       - ./mysql:/var/lib/mysql
 
+  # ───────── 관측/모니터링 스택 (기존 유지) ─────────
   node-exporter:
     image: prom/node-exporter:v1.6.1
     container_name: node-exporter
@@ -26,36 +43,27 @@ services:
       - '--path.rootfs=/host'
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
     restart: unless-stopped
-   # volumes:
-   #  - '/:/host:ro,rslave'
-    ports:
-      - "9100:9100"
-    #network_mode: host
+    ports: ["9100:9100"]
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.47.0
     container_name: cadvisor
     privileged: true
-    devices:
-      - /dev/kmsg:/dev/kmsg
+    devices: [ "/dev/kmsg:/dev/kmsg" ]
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:rw
       - /sys:/sys:ro
       - /var/lib/docker:/var/lib/docker:ro
-      - net=host \
-      - privileged \
-     # - /cgroup:/cgroup:ro
-    ports:
-      - "9101:8080"
     restart: unless-stopped
+    ports: ["9101:8080"]
 
   loki:
     image: grafana/loki:main
     container_name: loki
     command: [ "-config.file=/etc/loki/local-config.yaml" ]
-    ports:
-      - "3100:3100"
+    ports: ["3100:3100"]
+
   prometheus:
     image: prom/prometheus:v2.46.0
     container_name: prometheus
@@ -64,8 +72,8 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
     volumes:
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    ports:
-      - "9090:9090"
+    ports: ["9090:9090"]
+
   tempo:
     image: grafana/tempo:2.2.2
     container_name: tempo
@@ -74,37 +82,41 @@ services:
       - ./docker/tempo/tempo.yml:/etc/tempo.yaml:ro
       - ./data/tempo:/tmp/tempo
     ports:
-      - "3110:3100"  # Tempo
-      - "9411:9411" # zipkin
+      - "3110:3100"
+      - "9411:9411"
+
   grafana:
     image: grafana/grafana:10.1.0
     container_name: grafana
     volumes:
       - ./docker/grafana:/etc/grafana/provisioning/datasources:ro
     environment:
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-      - GF_AUTH_DISABLE_LOGIN_FORM=true
-    ports:
-      - "3000:3000"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    ports: ["3000:3000"]
 
+  # ───────── 서비스 컨테이너 ─────────
   service_desk:
-    image: fkiller14800/itoms_service_desk:latest 
+    image: fkiller14800/itoms_service_desk:latest
+    env_file: /home/ITOMS/.env
+    depends_on: [ kafka, mysql ]
+    ports: ["8080:8080"]          
+
   user_service:
-    image: fkiller14800/itoms_user_service:latest 
-    env_file:
-      - /home/ITOMS/.env
-    ports:
-      - "8081:8081"
+    image: fkiller14800/itoms_user_service:latest
+    env_file: /home/ITOMS/.env
+    depends_on: [ kafka, mysql ]
+    ports: ["8081:8080"]         
+
   ticket_core:
-    image: fkiller14800/itoms_ticket_core:latest 
-    env_file:
-      - /home/ITOMS/.env
-    ports:
-      - "8082: 8082"
+    image: fkiller14800/itoms_ticket_core:latest
+    env_file: /home/ITOMS/.env
+    depends_on: [ kafka, mysql ]
+    ports: ["8082:8080"]         
+
   service_request_management:
-    image: fkiller14800/itoms_service_request_management:latest 
-    env_file:
-      - /home/ITOMS/.env
-    ports:
-        - "8083:8083"
+    image: fkiller14800/itoms_service_request_management:latest
+    env_file: /home/ITOMS/.env
+    depends_on: [ kafka, mysql ]
+    ports: ["8083:8080"] 

@@ -5,7 +5,7 @@
 !.gitignore
 !*.yml
 !*.yaml
-
+!*.jmx
 # And not these directories...
 !*/
 
